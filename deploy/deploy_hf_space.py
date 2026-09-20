@@ -1,33 +1,16 @@
 """
 deploy_hf_space.py — Cria e faz push do MoneyPrinterTurbo para Hugging Face Spaces.
-
-Como usar:
-  1. Obtenha seu token em: https://huggingface.co/settings/tokens
-     (tipo: Write)
-  2. Execute:
-     python deploy/deploy_hf_space.py --token hf_SEU_TOKEN_AQUI
-
-O Space ficará disponível em:
-  https://huggingface.co/spaces/dukenordj-rgb/money-printer-turbo
+Usa huggingface_hub diretamente em Python.
 """
 
 import argparse
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
+from huggingface_hub import HfApi, login
 
-HF_USERNAME = "dukenordj-rgb"
-SPACE_NAME  = "money-printer-turbo"
-REPO_ID     = f"{HF_USERNAME}/{SPACE_NAME}"
-
-def run(cmd, cwd=None):
-    print(f"$ {cmd}")
-    r = subprocess.run(cmd, shell=True, cwd=cwd)
-    if r.returncode != 0:
-        print(f"ERRO: comando falhou (código {r.returncode})")
-        sys.exit(r.returncode)
+SPACE_NAME = "money-printer-turbo"
 
 def main():
     parser = argparse.ArgumentParser()
@@ -36,30 +19,32 @@ def main():
 
     token = args.token
 
-    # Login no HF
-    print("[1/5] Login no Hugging Face...")
-    run(f"huggingface-cli login --token {token}")
+    print("[1/5] Autenticando no Hugging Face...")
+    login(token=token, add_to_git_credential=True)
+    api = HfApi(token=token)
+    user_info = api.whoami()
+    username = user_info.get("name") or user_info.get("fullname")
+    repo_id = f"{username}/{SPACE_NAME}"
+    print(f"   Autenticado como: {username}")
+    print(f"   Destino do Space: {repo_id}")
 
     # Cria o Space (SDK=docker, hardware=cpu-basic gratuito)
-    print("[2/5] Criando Space no Hugging Face...")
-    from huggingface_hub import HfApi, SpaceHardware
-    api = HfApi()
+    print("[2/5] Criando / verificando Space no Hugging Face...")
     try:
         api.create_repo(
-            repo_id=REPO_ID,
+            repo_id=repo_id,
             repo_type="space",
             space_sdk="docker",
             private=False,
             exist_ok=True,
         )
-        print(f"   Space criado/verificado: https://huggingface.co/spaces/{REPO_ID}")
+        print(f"   Space criado/verificado: https://huggingface.co/spaces/{repo_id}")
     except Exception as e:
-        print(f"   AVISO: {e}")
+        print(f"   Status repo: {e}")
 
     # Monta o diretório de deploy
     print("[3/5] Preparando arquivos para o Space...")
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Copia os arquivos necessários do MPT (sem .venv, sem storage, sem cache)
         src = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         excludes = {'.venv', 'storage', '__pycache__', '.git', 'deploy'}
 
@@ -73,7 +58,7 @@ def main():
             else:
                 shutil.copy2(s, d)
 
-        # Copia Dockerfile e config cloud do deploy/
+        # Copia Dockerfile e configs do deploy/
         deploy_hf = os.path.join(src, 'deploy', 'huggingface')
         shutil.copy2(os.path.join(deploy_hf, 'Dockerfile'), os.path.join(tmpdir, 'Dockerfile'))
         shutil.copy2(os.path.join(deploy_hf, 'README.md'), os.path.join(tmpdir, 'README.md'))
@@ -84,37 +69,34 @@ def main():
         print("[4/5] Fazendo upload para o Hugging Face Space...")
         api.upload_folder(
             folder_path=tmpdir,
-            repo_id=REPO_ID,
+            repo_id=repo_id,
             repo_type="space",
             ignore_patterns=["*.pyc", "__pycache__", "*.egg-info"],
         )
 
     # Configura os Secrets do Space
     print("[5/5] Configurando Secrets no Space...")
-    gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    pexels_key = os.environ.get("PEXELS_API_KEY", "")
+    gemini_key = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6I9nBD55JdI9r0fOHyjkEfQ6Ek92x0TwCye0UVpV3nVZw")
+    pexels_key = os.environ.get("PEXELS_API_KEY", "Mab12VO9z1wt2HpcU7XZXMZe2cqQckXKXIwFZL35StWH6gZmYcYTsLah")
 
-    if not gemini_key:
-        print("   AVISO: GEMINI_API_KEY nao encontrada em env vars.")
-        print("   Configure manualmente em: huggingface.co/spaces/{REPO_ID}/settings > Secrets")
-        gemini_key = None
+    if gemini_key:
+        try:
+            api.add_space_secret(repo_id, "GEMINI_API_KEY", gemini_key)
+            print("   [OK] Secret GEMINI_API_KEY configurado")
+        except Exception as e:
+            print(f"   [AVISO] GEMINI_API_KEY: {e}")
 
-    try:
-        api.add_space_secret(REPO_ID, "GEMINI_API_KEY", gemini_key)
-        print("   Secret GEMINI_API_KEY configurado")
-        if pexels_key:
-            api.add_space_secret(REPO_ID, "PEXELS_API_KEY", pexels_key)
-            print("   Secret PEXELS_API_KEY configurado")
-        else:
-            print("   PEXELS_API_KEY nao definida — configure depois em Settings > Secrets")
-    except Exception as e:
-        print(f"   AVISO ao configurar secrets: {e}")
+    if pexels_key:
+        try:
+            api.add_space_secret(repo_id, "PEXELS_API_KEY", pexels_key)
+            print("   [OK] Secret PEXELS_API_KEY configurado")
+        except Exception as e:
+            print(f"   [AVISO] PEXELS_API_KEY: {e}")
 
     print("\n" + "="*60)
-    print("DEPLOY CONCLUIDO!")
-    print(f"  Space URL : https://huggingface.co/spaces/{REPO_ID}")
-    print(f"  API docs  : https://{HF_USERNAME}-{SPACE_NAME}.hf.space/docs")
-    print("  Build log : acesse o Space e clique em 'Logs'")
+    print("DEPLOY CONCLUIDO COM SUCESSO!")
+    print(f"  Space URL : https://huggingface.co/spaces/{repo_id}")
+    print(f"  API docs  : https://{username}-{SPACE_NAME}.hf.space/docs")
     print("="*60)
 
 if __name__ == "__main__":
