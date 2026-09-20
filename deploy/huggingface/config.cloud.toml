@@ -1,0 +1,57 @@
+# MoneyPrinterTurbo — Config para nuvem (Hugging Face / Colab)
+# As chaves sensíveis vêm de variáveis de ambiente (Secrets no HF)
+# NÃO editar as chaves aqui — usar os Secrets do painel
+
+log_level = "INFO"
+listen_host = "0.0.0.0"
+listen_port = 8080
+
+[app]
+api_key = ""
+hide_config = false
+script_generation_backend = "local"
+edge_tts_timeout = 30
+tls_verify = true
+
+# Vídeos — chave vem da env var PEXELS_API_KEY via config dinâmica
+video_source = "pexels"
+pexels_api_keys = []   # Preenchido via env var no startup
+pixabay_api_keys = []
+
+# LLM — chave vem da env var GEMINI_API_KEY
+llm_provider = "gemini"
+gemini_api_key = ""    # Preenchido via env var GEMINI_API_KEY
+gemini_model_name = "gemini-2.5-flash"
+
+# TTS — Edge TTS (gratuito, sem chave)
+subtitle_provider = "edge"
+
+material_directory = "/tmp/mpt_materials"
+enable_redis = false
+max_concurrent_tasks = 2
+max_queued_tasks = 20
+
+[whisper]
+model_size = "base"
+device = "cpu"
+compute_type = "int8"
+
+[proxy]
+
+[azure]
+speech_key = ""
+speech_region = ""
+
+[siliconflow]
+api_key = ""
+
+[minimax_tts]
+api_key = ""
+base_url = ""
+
+[elevenlabs]
+api_key = ""
+
+[ui]
+hide_log = false
+open_task_folder_on_completion = false
